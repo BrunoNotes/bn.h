@@ -3,7 +3,7 @@ CONFIG ?= debug
 
 APP_NAME = main
 
-CC := gcc
+CC := clang
 CFLAGS = -Wall -Wextra
 # DEBUG_FLAGS = -DDEBUG -O0 -g -fsanitize=address
 DEBUG_FLAGS = -DDEBUG -O0 -g
