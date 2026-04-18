@@ -519,6 +519,9 @@ b32 bnPlatformMemRelease(void* ptr, u64 size) {
 #endif
 
 BN_Arena* bnInitArena(u64 reserve_size, u64 commit_size, BN_ArenaType type) {
+    bnAssert(reserve_size > 0);
+    bnAssert(commit_size > 0);
+
     u32 page_size = bnPlatformGetPageSize();
 
     reserve_size = bnAlignPow2(reserve_size, page_size);
@@ -634,13 +637,6 @@ void bnEndTempArena(BN_TempArena temp) {
 BN_Allocator bnInitAllocator(BN_AllocatorInitParams params) {
     BN_Allocator alloc = {0};
 
-    if (params.reserve_size <= 0) {
-        params.reserve_size = Mib(32);
-    }
-    if (params.commit_size <= 0) {
-        params.commit_size = Mib(1);
-    }
-
     switch (params.type) {
     case BN_AllocatorType_ArenaStatic:
         alloc.data = bnInitArena(
@@ -649,6 +645,13 @@ BN_Allocator bnInitAllocator(BN_AllocatorInitParams params) {
         alloc.type = params.type;
         break;
     case BN_AllocatorType_ArenaGrowing:
+        if (params.reserve_size <= 0) {
+            params.reserve_size = Mib(32);
+        }
+        if (params.commit_size <= 0) {
+            params.commit_size = Mib(1);
+        }
+
         alloc.data = bnInitArena(
             params.reserve_size, params.commit_size, BN_ArenaType_Growing
         );
