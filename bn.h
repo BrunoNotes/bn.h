@@ -72,11 +72,11 @@ typedef double f64;
 
 #define bnSlicePrototype(type)                                                 \
     typedef struct {                                                           \
-        type* ptr;                                                             \
+        type* items;                                                             \
         u32 length;                                                            \
     } type##Slice
 
-#define sliceInit(type, p, len) ((type##Slice){.ptr = (p), .length = (len)})
+#define sliceInit(type, p, len) ((type##Slice){.items = (p), .length = (len)})
 
 #define sliceFromArray(type, ...)                                              \
     ((type##Slice){                                                            \
