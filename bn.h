@@ -78,6 +78,12 @@ typedef double f64;
 
 #define sliceInit(type, p, len) ((type##Slice){.ptr = (p), .length = (len)})
 
+#define sliceFromArray(type, ...)                                              \
+    ((type##Slice){                                                            \
+        .items = (type[]){__VA_ARGS__},                                        \
+        .length = sizeof((type[]){__VA_ARGS__}) / sizeof(type)                 \
+    })
+
 bnSlicePrototype(i8);
 bnSlicePrototype(i16);
 bnSlicePrototype(i32);
@@ -289,8 +295,8 @@ bnArrayPrototype(String);
 #define BN_DYNAMIC_ARRAY_INITIAL_CAPACITY 256
 #endif
 
-#define bnDaInit(alloc)                                                        \
-    {.items = NULL, .count = 0, .capacity = 0, .allocator = alloc}
+#define bnDaInit(type, alloc)                                                  \
+    {.items = (type##BNArray){0}, .count = 0, .capacity = 0, .allocator = alloc}
 
 #define bnDaReserve(da, expected_capacity)                                     \
     do {                                                                       \
