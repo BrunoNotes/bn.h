@@ -3,8 +3,8 @@
 
 int main(void) {
     String text = stringLit("test string");
-    bnLogInfo(text.str);
-    bnLogInfof("%s", text.str);
+    bnLogInfo(text.ptr);
+    bnLogInfof("%s", text.ptr);
     bnLogWarnf("%.*s", stringFmt(text));
 
     bnAssert(true);

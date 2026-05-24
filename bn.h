@@ -72,7 +72,7 @@ typedef double f64;
 
 #define bnSlicePrototype(type)                                                 \
     typedef struct {                                                           \
-        type* items;                                                             \
+        type* items;                                                           \
         u32 length;                                                            \
     } type##Slice
 
@@ -99,14 +99,14 @@ bnSlicePrototype(f32);
 bnSlicePrototype(f64);
 
 typedef struct {
-    char* str;
+    char* ptr;
     u32 length;
 } String;
 
 #define stringLit(s)                                                           \
     (String){(char*)(s), sizeof((s)) - 1} // makes a string from char*
 #define stringFmt(s)                                                           \
-    (int)(s).length, (s).str // to be used with "%.*s" in printf for example
+    (int)(s).length, (s).ptr // to be used with "%.*s" in printf for example
 
 #define Byte 1
 #define KiloByte (u32)(1024 * Byte)
@@ -395,6 +395,14 @@ void bnHashTableAppend(BN_HashTable* table, String key, void* value);
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(_WIN32)
+#include <windows.h>
+#else
+#include <sys/stat.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
+
 #ifdef DEBUG
 static thread_local BN_LogLevel bn_g_min_log_level = BN_LogLevel_Debug;
 #else
@@ -461,8 +469,6 @@ void bnSetLogHandler(BN_LogHandler* handler) {
 
 #if defined(_WIN32)
 
-#include <windows.h>
-
 u32 bnPlatformGetPageSize(void) {
     SYSTEM_INFO sysinfo = {0};
     GetSystemInfo(&sysinfo);
@@ -488,9 +494,6 @@ b32 bnPlatformMemRelease(void* ptr, u64 size) {
 }
 
 #elif defined(__linux__)
-
-#include <sys/mman.h>
-#include <unistd.h>
 
 u32 bnPlatformGetPageSize(void) {
     return (u32)sysconf(_SC_PAGESIZE);
@@ -810,7 +813,7 @@ void bnHashTableReserve(BN_HashTable* table, u32 expected_capacity) {
                 );
 
             for (u32 i = 0; i < table->capacity; i++) {
-                if (table->items[i].key.str != NULL) {
+                if (table->items[i].key.ptr != NULL) {
                     new_entries[i] = table->items[i];
                 }
             }
@@ -829,11 +832,11 @@ void bnHashTableFree(BN_HashTable* table) {
 }
 
 u32 bnHashTableLinearProbe(BN_HashTable* table, String key) {
-    u32 hash = fvn32aHash((u8*)key.str, key.length);
+    u32 hash = fvn32aHash((u8*)key.ptr, key.length);
     u32 idx = (u32)(hash & (u32)(table->capacity - 1));
 
-    while (table->items[idx].key.str != NULL) {
-        if (strcmp(key.str, table->items[idx].key.str) == 0) {
+    while (table->items[idx].key.ptr != NULL) {
+        if (strcmp(key.ptr, table->items[idx].key.ptr) == 0) {
             // Found key
             return idx;
         }
@@ -860,7 +863,7 @@ void bnHashTableAppend(BN_HashTable* table, String key, void* value) {
 
     u32 idx = bnHashTableLinearProbe(table, key);
 
-    if (table->items[idx].key.str == NULL) {
+    if (table->items[idx].key.ptr == NULL) {
         table->items[idx].key = key;
     }
     table->items[idx].value = value;
