@@ -76,7 +76,7 @@ extern "C" {
         #define va_start(ap, param) __builtin_va_start(ap, param)
     #endif
     #define va_end(ap) __builtin_va_end(ap)
-    #define va_arg(ap, type) __builtin_va_arg(ap, type)
+    #define va_arg(ap, T) __builtin_va_arg(ap, T)
 #endif
 
 #if _MSC_VER
@@ -107,47 +107,47 @@ typedef double f64;
 typedef size_t usize;
 typedef ptrdiff_t isize;
 
-#define bn_vec2Prototype(type)                                                 \
-    typedef union U_Vec2##type {                                               \
-        type elements[2];                                                      \
+#define bn_vec2Prototype(T)                                                    \
+    typedef union U_Vec2##T {                                                  \
+        T elements[2];                                                         \
         struct {                                                               \
             union {                                                            \
-                type x, y;                                                     \
+                T x, y;                                                        \
             };                                                                 \
         };                                                                     \
-    } Vec2##type;
+    } Vec2##T;
 
 bn_vec2Prototype(f32);
 bn_vec2Prototype(f64);
 
-#define bn_vec3Prototype(type)                                                 \
-    typedef union U_Vec3##type {                                               \
-        type elements[3];                                                      \
+#define bn_vec3Prototype(T)                                                    \
+    typedef union U_Vec3##T {                                                  \
+        T elements[3];                                                         \
         struct {                                                               \
             union {                                                            \
-                type x, y, z;                                                  \
+                T x, y, z;                                                     \
             };                                                                 \
             union {                                                            \
-                type r, g, b;                                                  \
+                T r, g, b;                                                     \
             };                                                                 \
         };                                                                     \
-    } Vec3##type;
+    } Vec3##T;
 
 bn_vec3Prototype(f32);
 bn_vec3Prototype(f64);
 
-#define bn_vec4Prototype(type)                                                 \
-    typedef union U_Vec4##type {                                               \
-        type elements[4];                                                      \
+#define bn_vec4Prototype(T)                                                    \
+    typedef union U_Vec4##T {                                                  \
+        T elements[4];                                                         \
         struct {                                                               \
             union {                                                            \
-                type x, y, z, w;                                               \
+                T x, y, z, w;                                                  \
             };                                                                 \
             union {                                                            \
-                type r, g, b, a;                                               \
+                T r, g, b, a;                                                  \
             };                                                                 \
         };                                                                     \
-    } Vec4##type;
+    } Vec4##T;
 
 bn_vec4Prototype(f32);
 bn_vec4Prototype(f64);
@@ -156,12 +156,12 @@ bn_vec4Prototype(f64);
 
 #define BN_SLICE_MAX_SIZE 256
 
-#define bn_slicePrototype(type)                                                \
+#define bn_slicePrototype(T)                                                   \
     typedef struct {                                                           \
-        type items[BN_SLICE_MAX_SIZE];                                         \
+        T items[BN_SLICE_MAX_SIZE];                                            \
         u32 count;                                                             \
         u32 size;                                                              \
-    } BN_slice##type
+    } BN_slice##T
 
 bn_slicePrototype(i8);
 bn_slicePrototype(i16);
@@ -190,11 +190,6 @@ bn_slicePrototype(Vec4f64);
         (slice).count++;                                                       \
         (slice).size = BN_SLICE_MAX_SIZE;                                      \
     } while (0)
-
-/*
-    BN_slicei32 slice = {0};
-    bn_sliceAppendArray(slice, (i32[]) {0,1,2,3});
-*/
 
 #define bn_sliceAppendArray(slice, item)                                       \
     do {                                                                       \
@@ -405,13 +400,13 @@ void bn_allocatorFreeAll(BN_Allocator* alloc);
 #define bnAllocPushArrayNZ(alloc, T, len)                                      \
     (T*)bn_allocatorPush((BN_AllocatorParams){sizeof(T) * (len), true}, (alloc))
 
-#define bn_dArrayPrototype(type)                                               \
+#define bn_dArrayPrototype(T)                                                  \
     typedef struct {                                                           \
-        type* items;                                                           \
+        T* items;                                                              \
         u32 count;                                                             \
         u32 capacity;                                                          \
         BN_Allocator* allocator;                                               \
-    } BN_array##type
+    } BN_array##T
 
 bn_dArrayPrototype(i8);
 bn_dArrayPrototype(i16);
