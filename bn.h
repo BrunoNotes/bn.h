@@ -12,7 +12,7 @@ References:
 #include "bn.h"
 
 // This library uses a global context called bn_context that must be initialized
-bn_initContext((BN_ContextInitParams){});
+bn_initContext(BN_DEFAULT_CONTEXT_PARAMS);
 
 // the bn_context contains a temp_allocator, that is basically a arena allocator
 // that must be freed by the user, at the end of a main loop for example
@@ -25,13 +25,22 @@ bn_destroyContext();
 
 #define BN_ASSERT_ENABLED // comment to disable asserts
 
+// clang-format off
 #if defined(_WIN32) || defined(_WIN64)
-#define BN_PLATFORM_WINDOWS
+    #define BN_PLATFORM_WINDOWS
 #elif defined(__APPLE__) && defined(__MACH__)
-#define BN_PLATFORM_OSX
+    #define BN_PLATFORM_OSX
 #elif defined(__linux__)
-#define BN_PLATFORM_LINUX
+    #define BN_PLATFORM_LINUX
 #endif
+
+#if defined(DEBUG)
+    #define BN_DEBUG true
+#else
+    #define BN_DEBUG false
+#endif
+
+// clang-format on
 
 #if defined(__cplusplus)
 extern "C" {
@@ -146,6 +155,7 @@ bn_vec4Prototype(f64);
     typedef struct {                                                           \
         type items[BN_SLICE_MAX_SIZE];                                         \
         u32 count;                                                             \
+        u32 size;                                                              \
     } BN_slice##type
 
 bn_slicePrototype(i8);
@@ -173,6 +183,7 @@ bn_slicePrototype(Vec4f64);
         bn_assert((slice).count < BN_SLICE_MAX_SIZE);                          \
         (slice).items[(slice).count] = (item);                                 \
         (slice).count++;                                                       \
+        (slice).size = BN_SLICE_MAX_SIZE;                                      \
     } while (0)
 
 /*
@@ -183,6 +194,7 @@ bn_slicePrototype(Vec4f64);
 #define bn_sliceAppendArray(slice, item)                                       \
     do {                                                                       \
         (slice).count += bn_arrayLen(item);                                    \
+        (slice).size = BN_SLICE_MAX_SIZE;                                      \
         bn_assert((slice).count <= BN_SLICE_MAX_SIZE);                         \
         for (u32 i = 0; i < (slice).count; i++) {                              \
             (slice).items[i] = (item)[i];                                      \
@@ -226,9 +238,15 @@ typedef enum {
     BN_LogLevel_Panic = 4,
 } BN_LogLevel;
 
-void bn_defaultLogHandler(BN_LogLevel level, const char* fmt, va_list args);
+typedef struct {
+    BN_LogLevel level;
+    bool terminal_colors;
+    bool enable;
+} BN_LogOpts;
 
-typedef void(BN_LogHandler)(BN_LogLevel level, const char* fmt, va_list args);
+void bn_defaultLogHandler(BN_LogOpts opts, const char* fmt, va_list args);
+
+typedef void(BN_LogHandler)(BN_LogOpts opts, const char* fmt, va_list args);
 
 void bn_log(BN_LogLevel level, const char* fmt, ...);
 
@@ -492,12 +510,28 @@ typedef struct {
     BN_Allocator allocator;
     BN_Allocator temp_allocator;
     BN_LogHandler* log_handler;
-    BN_LogLevel log_level;
+    BN_LogOpts log_opts;
 } BN_Context;
 
 typedef struct {
     BN_AllocatorInitParams allocator_params;
+    BN_LogHandler* log_handler;
+    BN_LogOpts log_opts;
 } BN_ContextInitParams;
+
+#define BN_DEFAULT_CONTEXT_PARAMS                                              \
+    (BN_ContextInitParams) {                                                   \
+        .allocator_params =                                                    \
+            (BN_AllocatorInitParams){                                          \
+                .reserve_size = Byte * 8,                                      \
+                .commit_size = Byte * 8,                                       \
+                .type = BN_AllocatorType_ArenaGrowing,                         \
+            },                                                                 \
+        .log_opts = (BN_LogOpts) {                                             \
+            .level = BN_DEBUG ? BN_LogLevel_Debug : BN_LogLevel_Info,          \
+            .terminal_colors = BN_IS_TERMINAL, .enable = true,                 \
+        }                                                                      \
+    }
 
 // only used to initialize the context on the heap
 static thread_local BN_Allocator _bn_context_allocator = {0};
@@ -515,43 +549,84 @@ void bn_destroyContext();
 #include <stdlib.h>
 #include <string.h>
 
+// clang-format off
 #if defined(BN_PLATFORM_WINDOWS)
-#include <windows.h>
+    #include <windows.h>
+    #include <io.h>
+
+    #define BN_IS_TERMINAL _isatty(_fileno(stdin))
 #else
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <unistd.h>
+    #include <sys/mman.h>
+    #include <sys/stat.h>
+    #include <unistd.h>
+
+    #define BN_IS_TERMINAL isatty(STDOUT_FILENO)
 #endif
+// clang-format on
 
-void bn_defaultLogHandler(BN_LogLevel level, const char* fmt, va_list args) {
-    if (level < bn_context->log_level) {
+#define BN_ANSI_ESC "\e"
+// #define BN_ANSI_ESC "\x1b"
+#define BN_ANSI_CSI BN_ANSI_ESC "["
+#define BN_ANSI_OSC BN_ANSI_ESC "]"
+#define BN_ANSI_SGR "m"
+
+#define BN_ANSI_RESET BN_ANSI_CSI "0" BN_ANSI_SGR
+#define BN_ANSI_DARK_GREY BN_ANSI_CSI "90" BN_ANSI_SGR
+#define BN_ANSI_YELLOW BN_ANSI_CSI "33" BN_ANSI_SGR
+#define BN_ANSI_RED BN_ANSI_CSI "33" BN_ANSI_SGR
+#define BN_ANSI_PURPLE BN_ANSI_CSI "35" BN_ANSI_SGR
+
+void bn_defaultLogHandler(BN_LogOpts opts, const char* fmt, va_list args) {
+    if (opts.level < bn_context->log_opts.level)
         return;
-    }
 
-    switch (level) {
+    if (!opts.enable)
+        return;
+
+    switch (opts.level) {
     case BN_LogLevel_Debug:
-        fprintf(stderr, "\x1b[90m[Debug]\x1b[0m ");
+        if (opts.terminal_colors)
+            fprintf(stderr, BN_ANSI_DARK_GREY);
+
+        fprintf(stderr, "[DEBUG]");
         break;
     case BN_LogLevel_Info:
-        fprintf(stderr, "\x1b[0m[Info]\x1b[0m ");
+        if (opts.terminal_colors)
+            fprintf(stderr, BN_ANSI_RESET);
+
+        fprintf(stderr, "[INFO ]");
         break;
     case BN_LogLevel_Warning:
-        fprintf(stderr, "\x1b[33m[Warn]\x1b[0m ");
+        if (opts.terminal_colors)
+            fprintf(stderr, BN_ANSI_YELLOW);
+
+        fprintf(stderr, "[WARN ]");
         break;
     case BN_LogLevel_Error:
-        fprintf(stderr, "\x1b[31m[Error]\x1b[0m ");
+        if (opts.terminal_colors)
+            fprintf(stderr, BN_ANSI_RED);
+
+        fprintf(stderr, "[ERROR]");
         break;
     case BN_LogLevel_Panic:
-        fprintf(stderr, "\x1b[35m[Panic]\x1b[0m ");
+        if (opts.terminal_colors)
+            fprintf(stderr, BN_ANSI_PURPLE);
+
+        fprintf(stderr, "[PANIC]");
         break;
     default:
         return;
     }
 
+    if (opts.terminal_colors)
+        fprintf(stderr, BN_ANSI_RESET);
+
+    fprintf(stderr, " ");
+
     vfprintf(stderr, fmt, args);
     fprintf(stderr, "\n");
 
-    if (level == BN_LogLevel_Panic) {
+    if (opts.level == BN_LogLevel_Panic) {
         exit(1);
     }
 }
@@ -565,7 +640,14 @@ void bn_log(BN_LogLevel level, const char* fmt, ...) {
     va_list args;
     va_start(args, fmt);
 
-    bn_context->log_handler(level, fmt, args);
+    bn_context->log_handler(
+        (BN_LogOpts){
+            .level = level,
+            .terminal_colors = bn_context->log_opts.terminal_colors,
+            .enable = bn_context->log_opts.enable,
+        },
+        fmt, args
+    );
 
     va_end(args);
 }
@@ -581,8 +663,8 @@ static void bn_printLastWindowsError(const char* contextMessage) {
     LPSTR message_buffer = NULL;
 
     size_t size = FormatMessageA(
-        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
-            FORMAT_MESSAGE_IGNORE_INSERTS,
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM
+            | FORMAT_MESSAGE_IGNORE_INSERTS,
         NULL, error_message_id, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
         (LPSTR)&message_buffer, 0, NULL
     );
@@ -804,10 +886,10 @@ BN_Allocator bn_initAllocator(BN_AllocatorInitParams params) {
         break;
     case BN_AllocatorType_ArenaGrowing:
         if (params.reserve_size <= 0) {
-            params.reserve_size = Mib(32);
+            params.reserve_size = Byte * 8;
         }
         if (params.commit_size <= 0) {
-            params.commit_size = Mib(1);
+            params.commit_size = Byte * 8;
         }
 
         bn_logDebugf(
@@ -892,6 +974,8 @@ void bn_heapAllocatorFree(void* data, u64 size) {
 }
 
 void* bn_allocatorPush(BN_AllocatorParams params, BN_Allocator* alloc) {
+    alloc->size = params.size;
+
     switch (alloc->type) {
     case BN_AllocatorType_ArenaStatic:
     case BN_AllocatorType_ArenaGrowing:
@@ -899,7 +983,6 @@ void* bn_allocatorPush(BN_AllocatorParams params, BN_Allocator* alloc) {
             (BN_Arena*)alloc->data, params.size, params.non_zero
         );
     case BN_AllocatorType_HeapAllocator:
-        alloc->size = params.size;
         return bn_heapAllocatorPush(params.size, params.non_zero);
     case BN_AllocatorType_TempAllocator:
         return bn_arenaPush(
@@ -919,6 +1002,7 @@ void bn_allocatorFree(BN_Allocator* alloc, void* data) {
         break;
     case BN_AllocatorType_HeapAllocator:
         bn_heapAllocatorFree(data, alloc->size);
+        alloc->size = 0;
         break;
     default:
         bn_logPanic("Allocator not initialized");
@@ -942,6 +1026,7 @@ void bn_allocatorFreeAll(BN_Allocator* alloc) {
         bn_logPanic("Allocator not initialized");
         break;
     }
+    alloc->size = 0;
 }
 
 static inline u32 bn_fvn32aHash(u8* data, u32 length) {
@@ -1036,39 +1121,25 @@ void bn_hashTableAppend(BN_HashTable* table, String key, void* value) {
 
 void bn_initContext(BN_ContextInitParams params) {
     _bn_context_allocator = bn_initAllocator((BN_AllocatorInitParams){
-        .reserve_size = Byte * 2,
-        .commit_size = Byte * 2,
+        .reserve_size = Byte * 8,
+        .commit_size = Byte * 8,
         .type = BN_AllocatorType_ArenaStatic,
     });
 
     bn_context = bn_allocPushStruct(&_bn_context_allocator, BN_Context);
 
-#if defined(DEBUG)
-    bn_context->log_level = BN_LogLevel_Debug;
-#else
-    bn_context->log_level = BN_LogLevel_Info;
-#endif
+    bn_context->log_opts = params.log_opts;
 
-    if (bn_context->log_handler == NULL) {
+    if (params.log_handler == NULL) {
         bn_context->log_handler = &bn_defaultLogHandler;
         bn_logDebugf("BN: default log handler loaded");
-    }
-
-    if (
-        params.allocator_params.reserve_size == 0 &&
-        params.allocator_params.commit_size == 0 &&
-        params.allocator_params.type == 0 //
-    ) {
-        params.allocator_params.reserve_size = Mib(4);
-        params.allocator_params.commit_size = Kib(2);
-        params.allocator_params.type = BN_AllocatorType_ArenaGrowing;
     }
 
     bn_context->allocator = bn_initAllocator(params.allocator_params);
 
     bn_context->temp_allocator = bn_initAllocator((BN_AllocatorInitParams){
-        .reserve_size = Mib(4),
-        .commit_size = Kib(2),
+        .reserve_size = Byte * 8,
+        .commit_size = Byte * 8,
         .type = BN_AllocatorType_TempAllocator,
     });
 }
