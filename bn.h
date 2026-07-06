@@ -26,6 +26,11 @@ bn_destroyContext();
 #define BN_ASSERT_ENABLED // comment to disable asserts
 
 // clang-format off
+#if !defined(BN_ALLOCATOR_BACKEND_VIRTUAL_MEMORY) && !defined(BN_ALLOCATOR_BACKEND_MALLOC)
+    #define BN_ALLOCATOR_BACKEND_VIRTUAL_MEMORY
+    // #define BN_ALLOCATOR_BACKEND_MALLOC
+#endif
+
 #if defined(_WIN32) || defined(_WIN64)
     #define BN_PLATFORM_WINDOWS
 #elif defined(__APPLE__) && defined(__MACH__)
@@ -223,6 +228,15 @@ typedef struct {
 #define Mib(n) ((u64)(n) * MegaByte)
 #define Gib(n) ((u64)(n) * GigaByte)
 
+// clang-format off
+#if defined(BN_ALLOCATOR_BACKEND_MALLOC)
+    // for alignment
+    #ifndef BN_ALLOCATOR_MIN_SIZE
+        #define BN_ALLOCATOR_MIN_SIZE Kib(4)
+    #endif
+#endif
+// clang-format on
+
 #define bn_min(a, b) (((a) < (b)) ? (a) : (b))
 #define bn_max(a, b) (((a) > (b)) ? (a) : (b))
 #define bn_abs(x) ((x) < 0 ? -(x) : (x))
@@ -292,6 +306,7 @@ void bn_log(BN_LogLevel level, const char* fmt, ...);
     #define bn_assert(expr)
     #define bn_assertMsg(expr, msg)
 #endif
+
 // clang-format on
 
 u32 bn_platformGetPageSize(void);
@@ -302,6 +317,18 @@ b32 bn_platformMemRelease(void* ptr, u64 size);
 
 #define BN_ARENA_BASE_POS (sizeof(BN_Arena))
 #define BN_ARENA_ALIGN (sizeof(void*))
+
+// clang-format off
+#if defined (BN_ALLOCATOR_BACKEND_VIRTUAL_MEMORY)
+    // use malloc for other platforms as fallback
+    #if !defined(BN_PLATFORM_LINUX) && !defined(BN_PLATFORM_WINDOWS)
+        #undef BN_ALLOCATOR_BACKEND_VIRTUAL_MEMORY
+        #if !defined(BN_ALLOCATOR_BACKEND_MALLOC)
+            #define BN_ALLOCATOR_BACKEND_MALLOC
+        #endif
+    #endif
+#endif
+// clang-format on
 
 typedef enum {
     BN_ArentaType_Static,
@@ -320,7 +347,7 @@ BN_Arena* bn_initArena(u64 reserve_size, u64 commit_size, BN_ArenaType type);
 void bn_destroyArena(BN_Arena* arena);
 
 void* bn_arenaPush(BN_Arena* arena, u64 size, bool non_zero);
-void bn_arenaRealloc(BN_Arena* arena, u64 new_pos);
+BN_Arena* bn_arenaRealloc(BN_Arena* arena, u64 new_pos);
 void bn_arenaPop(BN_Arena* arena, u64 size);
 void bn_arenaPopTo(BN_Arena* arena, u64 pos);
 
@@ -757,6 +784,7 @@ BN_Arena* bn_initArena(u64 reserve_size, u64 commit_size, BN_ArenaType type) {
     bn_assert(reserve_size > 0);
     bn_assert(commit_size > 0);
 
+#if defined(BN_ALLOCATOR_BACKEND_VIRTUAL_MEMORY)
     u32 page_size = bn_platformGetPageSize();
 
     reserve_size = bn_alignPow2(reserve_size, page_size);
@@ -767,6 +795,11 @@ BN_Arena* bn_initArena(u64 reserve_size, u64 commit_size, BN_ArenaType type) {
     if (!bn_platformMemCommit(arena, commit_size)) {
         return NULL;
     }
+#elif defined(BN_ALLOCATOR_BACKEND_MALLOC)
+    reserve_size = bn_alignPow2(reserve_size, BN_ALLOCATOR_MIN_SIZE);
+    BN_Arena* arena = (BN_Arena*)malloc(reserve_size);
+    bn_assert(arena != NULL);
+#endif
 
     arena->reserve_size = reserve_size;
     arena->commit_size = commit_size;
@@ -778,8 +811,12 @@ BN_Arena* bn_initArena(u64 reserve_size, u64 commit_size, BN_ArenaType type) {
 }
 
 void bn_destroyArena(BN_Arena* arena) {
+#if defined(BN_ALLOCATOR_BACKEND_VIRTUAL_MEMORY)
     bool ok = bn_platformMemRelease(arena, arena->reserve_size);
     bn_assert(ok == true);
+#elif defined(BN_ALLOCATOR_BACKEND_MALLOC)
+    free(arena);
+#endif
 }
 
 void* bn_arenaPush(BN_Arena* arena, u64 size, bool non_zero) {
@@ -788,7 +825,7 @@ void* bn_arenaPush(BN_Arena* arena, u64 size, bool non_zero) {
 
     // Grow arena if needed
     if (new_pos > arena->reserve_size && arena->type == BN_ArenaType_Growing) {
-        bn_arenaRealloc(arena, new_pos);
+        arena = bn_arenaRealloc(arena, new_pos);
     }
 
     if (new_pos > arena->commit_pos) {
@@ -797,12 +834,14 @@ void* bn_arenaPush(BN_Arena* arena, u64 size, bool non_zero) {
         new_commit_pos -= new_commit_pos % arena->commit_size;
         new_commit_pos = bn_min(new_commit_pos, arena->reserve_size);
 
+#if defined(BN_ALLOCATOR_BACKEND_VIRTUAL_MEMORY)
         u8* mem = (u8*)arena + arena->commit_pos;
         u64 commit_size = new_commit_pos - arena->commit_pos;
 
         if (!bn_platformMemCommit(mem, commit_size)) {
             return NULL;
         }
+#endif
 
         arena->commit_pos = new_commit_pos;
     }
@@ -818,12 +857,16 @@ void* bn_arenaPush(BN_Arena* arena, u64 size, bool non_zero) {
     return out;
 }
 
-void bn_arenaRealloc(BN_Arena* arena, u64 new_pos) {
+BN_Arena* bn_arenaRealloc(BN_Arena* arena, u64 new_pos) {
     u64 new_reserve_size = arena->reserve_size * 2;
     while (new_reserve_size < new_pos) {
         new_reserve_size *= 2;
     }
+    u64 commit_size = arena->commit_size;
+    u64 pos = arena->pos;
+    u64 commit_pos = arena->commit_pos;
 
+#if defined(BN_ALLOCATOR_BACKEND_VIRTUAL_MEMORY)
     u32 page_size = bn_platformGetPageSize();
     new_reserve_size = bn_alignPow2(new_reserve_size, page_size);
 
@@ -834,18 +877,27 @@ void bn_arenaRealloc(BN_Arena* arena, u64 new_pos) {
     memcpy(new_arena, arena, arena->commit_pos);
     if (!bn_platformMemCommit(new_arena, arena->commit_pos)) {
         bn_platformMemRelease(new_arena, new_reserve_size);
-        return;
+        return NULL;
     }
 
-    new_arena->reserve_size = new_reserve_size;
-    new_arena->commit_size = arena->commit_size;
-    new_arena->pos = arena->pos;
-    new_arena->commit_pos = arena->commit_pos;
-
-    // Release old arena and update pointer
     bn_platformMemRelease(arena, arena->reserve_size);
+#elif defined(BN_ALLOCATOR_BACKEND_MALLOC)
+    new_reserve_size = bn_alignPow2(new_reserve_size, BN_ALLOCATOR_MIN_SIZE);
+    // BN_Arena* new_arena =
+    //     (BN_Arena*)malloc(new_reserve_size);
+    // bn_assert(new_arena != NULL);
+    //
+    // memcpy(new_arena, arena, arena->commit_pos);
+    //
+    // free(arena);
+    BN_Arena* new_arena = (BN_Arena*)realloc(arena, new_reserve_size);
+#endif
+    new_arena->reserve_size = new_reserve_size;
+    new_arena->commit_size = commit_size;
+    new_arena->pos = pos;
+    new_arena->commit_pos = commit_pos;
 
-    arena = new_arena;
+    return new_arena;
 }
 
 void bn_arenaPop(BN_Arena* arena, u64 size) {
@@ -867,6 +919,37 @@ BN_TempArena bn_beginTempArena(BN_Arena* arena) {
 
 void bn_endTempArena(BN_TempArena temp) {
     bn_arenaPopTo(temp.arena, temp.start_pos);
+}
+
+void* bn_heapAllocatorPush(u64 size, bool non_zero) {
+#if defined(BN_ALLOCATOR_BACKEND_VIRTUAL_MEMORY)
+    u32 page_size = bn_platformGetPageSize();
+    size = bn_alignPow2(size, page_size);
+    void* data = bn_platformMemReserve(size);
+
+    if (!bn_platformMemCommit(data, size)) {
+        return NULL;
+    }
+#elif defined(BN_ALLOCATOR_BACKEND_MALLOC)
+    size = bn_alignPow2(size, BN_ALLOCATOR_MIN_SIZE);
+    void* data = malloc(size);
+#endif
+
+    if (!non_zero) {
+        memset(data, 0, size);
+    }
+
+    return data;
+}
+
+void bn_heapAllocatorFree(void* data, u64 size) {
+#if defined(BN_ALLOCATOR_BACKEND_VIRTUAL_MEMORY)
+    bn_platformMemRelease(data, size);
+#elif defined(BN_ALLOCATOR_BACKEND_MALLOC)
+    (void)size;
+    free(data);
+    data = NULL;
+#endif
 }
 
 BN_Allocator bn_initAllocator(BN_AllocatorInitParams params) {
@@ -948,29 +1031,6 @@ void bn_destroyAllocator(BN_Allocator* alloc) {
         bn_logPanic("Allocator not implemented");
         break;
     }
-}
-
-void* bn_heapAllocatorPush(u64 size, bool non_zero) {
-    // void* data = malloc(size);
-    u32 page_size = bn_platformGetPageSize();
-    size = bn_alignPow2(size, page_size);
-    void* data = bn_platformMemReserve(size);
-
-    if (!bn_platformMemCommit(data, size)) {
-        return NULL;
-    }
-
-    if (!non_zero) {
-        memset(data, 0, size);
-    }
-
-    return data;
-}
-
-void bn_heapAllocatorFree(void* data, u64 size) {
-    // free(data);
-    // data = NULL;
-    bn_platformMemRelease(data, size);
 }
 
 void* bn_allocatorPush(BN_AllocatorParams params, BN_Allocator* alloc) {
@@ -1134,6 +1194,12 @@ void bn_initContext(BN_ContextInitParams params) {
         bn_context->log_handler = &bn_defaultLogHandler;
         bn_logDebugf("BN: default log handler loaded");
     }
+
+#if defined(BN_ALLOCATOR_BACKEND_VIRTUAL_MEMORY)
+    bn_logDebugf("BN: allocator backend: virtual memory");
+#elif defined(BN_ALLOCATOR_BACKEND_MALLOC)
+    bn_logDebugf("BN: allocator backend: malloc");
+#endif
 
     bn_context->allocator = bn_initAllocator(params.allocator_params);
 
