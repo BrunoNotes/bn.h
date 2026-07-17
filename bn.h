@@ -646,7 +646,7 @@ void bn_defaultLogHandler(BN_LogOpts opts, const char* fmt, va_list args) {
     fprintf(stderr, " ");
 
     vfprintf(stderr, fmt, args);
-    fprintf(stderr, "\n");
+    fprintf(stderr, "\r\n");
 
     if (opts.level == BN_LogLevel_Panic) {
         exit(1);
