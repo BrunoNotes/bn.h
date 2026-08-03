@@ -107,12 +107,12 @@ typedef double f64;
 typedef size_t usize;
 typedef ptrdiff_t isize;
 
-#define bn_vec2Prototype(T)                                                 \
-    typedef union U_Vec2##T {                                               \
-        T elements[2];                                                      \
+#define bn_vec2Prototype(T)                                                    \
+    typedef union U_Vec2##T {                                                  \
+        T elements[2];                                                         \
         struct {                                                               \
             union {                                                            \
-                T x, y;                                                     \
+                T x, y;                                                        \
             };                                                                 \
         };                                                                     \
     } Vec2##T;
@@ -120,15 +120,15 @@ typedef ptrdiff_t isize;
 bn_vec2Prototype(f32);
 bn_vec2Prototype(f64);
 
-#define bn_vec3Prototype(T)                                                 \
-    typedef union U_Vec3##T {                                               \
-        T elements[3];                                                      \
+#define bn_vec3Prototype(T)                                                    \
+    typedef union U_Vec3##T {                                                  \
+        T elements[3];                                                         \
         struct {                                                               \
             union {                                                            \
-                T x, y, z;                                                  \
+                T x, y, z;                                                     \
             };                                                                 \
             union {                                                            \
-                T r, g, b;                                                  \
+                T r, g, b;                                                     \
             };                                                                 \
         };                                                                     \
     } Vec3##T;
@@ -136,15 +136,15 @@ bn_vec2Prototype(f64);
 bn_vec3Prototype(f32);
 bn_vec3Prototype(f64);
 
-#define bn_vec4Prototype(T)                                                 \
-    typedef union U_Vec4##T {                                               \
-        T elements[4];                                                      \
+#define bn_vec4Prototype(T)                                                    \
+    typedef union U_Vec4##T {                                                  \
+        T elements[4];                                                         \
         struct {                                                               \
             union {                                                            \
-                T x, y, z, w;                                               \
+                T x, y, z, w;                                                  \
             };                                                                 \
             union {                                                            \
-                T r, g, b, a;                                               \
+                T r, g, b, a;                                                  \
             };                                                                 \
         };                                                                     \
     } Vec4##T;
@@ -153,53 +153,6 @@ bn_vec4Prototype(f32);
 bn_vec4Prototype(f64);
 
 #define bn_arrayLen(a) (sizeof(a) / sizeof(a[0]))
-
-#define BN_SLICE_MAX_SIZE 256
-
-#define bn_slicePrototype(T)                                                \
-    typedef struct {                                                           \
-        T items[BN_SLICE_MAX_SIZE];                                         \
-        u32 count;                                                             \
-        u32 size;                                                              \
-    } BN_slice##T
-
-bn_slicePrototype(i8);
-bn_slicePrototype(i16);
-bn_slicePrototype(i32);
-bn_slicePrototype(i64);
-bn_slicePrototype(u8);
-bn_slicePrototype(u16);
-bn_slicePrototype(u32);
-bn_slicePrototype(u64);
-bn_slicePrototype(b8);
-bn_slicePrototype(b32);
-bn_slicePrototype(b64);
-bn_slicePrototype(f32);
-bn_slicePrototype(f64);
-bn_slicePrototype(Vec2f32);
-bn_slicePrototype(Vec2f64);
-bn_slicePrototype(Vec3f32);
-bn_slicePrototype(Vec3f64);
-bn_slicePrototype(Vec4f32);
-bn_slicePrototype(Vec4f64);
-
-#define bn_sliceAppend(slice, item)                                            \
-    do {                                                                       \
-        bn_assert((slice).count < BN_SLICE_MAX_SIZE);                          \
-        (slice).items[(slice).count] = (item);                                 \
-        (slice).count++;                                                       \
-        (slice).size = BN_SLICE_MAX_SIZE;                                      \
-    } while (0)
-
-#define bn_sliceAppendArray(slice, item)                                       \
-    do {                                                                       \
-        (slice).count += bn_arrayLen(item);                                    \
-        (slice).size = BN_SLICE_MAX_SIZE;                                      \
-        bn_assert((slice).count <= BN_SLICE_MAX_SIZE);                         \
-        for (u32 i = 0; i < (slice).count; i++) {                              \
-            (slice).items[i] = (item)[i];                                      \
-        }                                                                      \
-    } while (0)
 
 typedef struct {
     char* ptr;
@@ -400,10 +353,10 @@ void bn_allocatorFreeAll(BN_Allocator* alloc);
 #define bnAllocPushArrayNZ(alloc, T, len)                                      \
     (T*)bn_allocatorPush((BN_AllocatorParams){sizeof(T) * (len), true}, (alloc))
 
-#define bn_dArrayPrototype(T)                                               \
+#define bn_dArrayPrototype(T)                                                  \
     typedef struct {                                                           \
-        T* items;                                                           \
-        u32 count;                                                             \
+        T* items;                                                              \
+        u32 length;                                                            \
         u32 capacity;                                                          \
         BN_Allocator* allocator;                                               \
     } BN_array##T
@@ -434,7 +387,7 @@ bn_dArrayPrototype(Vec4f64);
 #endif
 
 #define bn_daInit(alloc)                                                       \
-    {.items = NULL, .count = 0, .capacity = 0, .allocator = alloc}
+    {.items = NULL, .length = 0, .capacity = 0, .allocator = alloc}
 
 #define bn_daReserve(da, expected_capacity)                                    \
     do {                                                                       \
@@ -471,31 +424,31 @@ bn_dArrayPrototype(Vec4f64);
 
 #define bn_daAppend(da, item)                                                  \
     do {                                                                       \
-        bn_daReserve((da), (da)->count + 1);                                   \
-        (da)->items[(da)->count++] = (item);                                   \
+        bn_daReserve((da), (da)->length + 1);                                  \
+        (da)->items[(da)->length++] = (item);                                  \
     } while (0)
 
 #define bn_daAppendMany(da, new_items, new_items_count)                        \
     do {                                                                       \
-        bn_daReserve((da), (da)->count + (new_items_count));                   \
+        bn_daerve((da), (da)->length + (new_items_count));                     \
         memcpy(                                                                \
-            (da)->items + (da)->count, (new_items),                            \
+            (da)->items + (da)->length, (new_items),                           \
             (new_items_count) * sizeof(*(da)->items)                           \
         );                                                                     \
-        (da)->count += (new_items_count);                                      \
+        (da)->length += (new_items_count);                                     \
     } while (0)
 
 #define bn_daFree(da)                                                          \
     do {                                                                       \
         bn_allocatorFree((da)->allocator, (da)->items);                        \
-        (da)->count = 0;                                                       \
+        (da)->length = 0;                                                      \
         (da)->capacity = 0;                                                    \
     } while (0)
 
 #define bn_daResize(da, new_size)                                              \
     do {                                                                       \
         bn_daReserve((da), new_size);                                          \
-        (da)->count = (new_size);                                              \
+        (da)->length = (new_size);                                             \
     } while (0)
 
 #ifndef BN_HASH_TABLE_INITIAL_CAPACITY
@@ -509,13 +462,13 @@ typedef struct {
 
 typedef struct {
     BN_HashTableEntry* items;
-    u32 count;
+    u32 length;
     u32 capacity;
     BN_Allocator* allocator;
 } BN_HashTable;
 
 #define bn_htInit(alloc)                                                       \
-    {.items = NULL, .count = 0, .capacity = 0, .allocator = alloc}
+    {.items = NULL, .length = 0, .capacity = 0, .allocator = alloc}
 
 void bn_hashTableReserve(BN_HashTable* table, u64 expected_capacity);
 void bn_hashTableFree(BN_HashTable* table);
@@ -684,8 +637,8 @@ static void bn_printLastWindowsError(const char* contextMessage) {
     LPSTR message_buffer = NULL;
 
     size_t size = FormatMessageA(
-        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM
-            | FORMAT_MESSAGE_IGNORE_INSERTS,
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
+            FORMAT_MESSAGE_IGNORE_INSERTS,
         NULL, error_message_id, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
         (LPSTR)&message_buffer, 0, NULL
     );
@@ -867,12 +820,26 @@ BN_Arena* bn_arenaRealloc(BN_Arena* arena, u64 new_pos) {
     BN_Arena* new_arena = (BN_Arena*)bn_platformMemReserve(new_reserve_size);
     bn_assert(new_arena != NULL);
 
-    // Copy existing data and commit the current committed size
-    memcpy(new_arena, arena, arena->commit_pos);
+    u64 bytes_to_commit = commit_pos;
+    if (bytes_to_commit < sizeof(BN_Arena)) {
+        bytes_to_commit = sizeof(BN_Arena);
+    }
+    bytes_to_commit = bn_alignPow2(bytes_to_commit, page_size);
+
     if (!bn_platformMemCommit(new_arena, arena->commit_pos)) {
         bn_platformMemRelease(new_arena, new_reserve_size);
         return NULL;
     }
+    // Copy existing data and commit the current committed size
+    memcpy(new_arena, arena, arena->commit_pos);
+    // if (!bn_platformMemCommit(new_arena, arena->commit_pos)) {
+    //     bn_platformMemRelease(new_arena, new_reserve_size);
+    //     return NULL;
+    // }
+    new_arena->reserve_size = new_reserve_size;
+    new_arena->commit_size = commit_size;
+    new_arena->pos = pos;
+    new_arena->commit_pos = commit_pos;
 
     bn_platformMemRelease(arena, arena->reserve_size);
 #elif defined(BN_ALLOCATOR_BACKEND_MALLOC)
@@ -885,11 +852,12 @@ BN_Arena* bn_arenaRealloc(BN_Arena* arena, u64 new_pos) {
     //
     // free(arena);
     BN_Arena* new_arena = (BN_Arena*)realloc(arena, new_reserve_size);
-#endif
+
     new_arena->reserve_size = new_reserve_size;
     new_arena->commit_size = commit_size;
     new_arena->pos = pos;
     new_arena->commit_pos = commit_pos;
+#endif
 
     return new_arena;
 }
@@ -1130,7 +1098,7 @@ void bn_hashTableReserve(BN_HashTable* table, u64 expected_capacity) {
 
 void bn_hashTableFree(BN_HashTable* table) {
     bn_allocatorFree(table->allocator, table->items);
-    table->count = 0;
+    table->length = 0;
     table->capacity = 0;
 }
 
@@ -1162,7 +1130,7 @@ void* bn_hashTableGet(BN_HashTable* table, String key) {
 void bn_hashTableAppend(BN_HashTable* table, String key, void* value) {
     bn_assert(value != NULL);
 
-    bn_hashTableReserve(table, table->count + 1);
+    bn_hashTableReserve(table, table->length + 1);
 
     u32 idx = bn_hashTableLinearProbe(table, key);
 
@@ -1170,10 +1138,18 @@ void bn_hashTableAppend(BN_HashTable* table, String key, void* value) {
         table->items[idx].key = key;
     }
     table->items[idx].value = value;
-    table->count++;
+    table->length++;
 }
 
+// static thread_local BN_Allocator _bn_context_allocator = {0};
+
 void bn_initContext(BN_ContextInitParams params) {
+    // _bn_context_allocator = bn_initAllocator((BN_AllocatorInitParams){
+    //     .reserve_size = Byte * 8,
+    //     .commit_size = Byte * 8,
+    //     .type = BN_AllocatorType_ArenaGrowing,
+    // });
+    // bn_context = bn_allocPushStruct(&_bn_context_allocator, BN_Context);
     bn_context = malloc(sizeof(BN_Context));
 
     bn_context->log_opts = params.log_opts;
@@ -1204,6 +1180,7 @@ void bn_destroyContext() {
 
     bn_logDebugf("BN: destroying context");
 
+    // bn_destroyAllocator(&_bn_context_allocator);
     free(bn_context);
 }
 
