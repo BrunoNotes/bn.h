@@ -107,12 +107,12 @@ typedef double f64;
 typedef size_t usize;
 typedef ptrdiff_t isize;
 
-#define bn_vec2Prototype(T)                                                    \
-    typedef union U_Vec2##T {                                                  \
-        T elements[2];                                                         \
+#define bn_vec2Prototype(T)                                                 \
+    typedef union U_Vec2##T {                                               \
+        T elements[2];                                                      \
         struct {                                                               \
             union {                                                            \
-                T x, y;                                                        \
+                T x, y;                                                     \
             };                                                                 \
         };                                                                     \
     } Vec2##T;
@@ -120,15 +120,15 @@ typedef ptrdiff_t isize;
 bn_vec2Prototype(f32);
 bn_vec2Prototype(f64);
 
-#define bn_vec3Prototype(T)                                                    \
-    typedef union U_Vec3##T {                                                  \
-        T elements[3];                                                         \
+#define bn_vec3Prototype(T)                                                 \
+    typedef union U_Vec3##T {                                               \
+        T elements[3];                                                      \
         struct {                                                               \
             union {                                                            \
-                T x, y, z;                                                     \
+                T x, y, z;                                                  \
             };                                                                 \
             union {                                                            \
-                T r, g, b;                                                     \
+                T r, g, b;                                                  \
             };                                                                 \
         };                                                                     \
     } Vec3##T;
@@ -136,15 +136,15 @@ bn_vec2Prototype(f64);
 bn_vec3Prototype(f32);
 bn_vec3Prototype(f64);
 
-#define bn_vec4Prototype(T)                                                    \
-    typedef union U_Vec4##T {                                                  \
-        T elements[4];                                                         \
+#define bn_vec4Prototype(T)                                                 \
+    typedef union U_Vec4##T {                                               \
+        T elements[4];                                                      \
         struct {                                                               \
             union {                                                            \
-                T x, y, z, w;                                                  \
+                T x, y, z, w;                                               \
             };                                                                 \
             union {                                                            \
-                T r, g, b, a;                                                  \
+                T r, g, b, a;                                               \
             };                                                                 \
         };                                                                     \
     } Vec4##T;
@@ -156,9 +156,9 @@ bn_vec4Prototype(f64);
 
 #define BN_SLICE_MAX_SIZE 256
 
-#define bn_slicePrototype(T)                                                   \
+#define bn_slicePrototype(T)                                                \
     typedef struct {                                                           \
-        T items[BN_SLICE_MAX_SIZE];                                            \
+        T items[BN_SLICE_MAX_SIZE];                                         \
         u32 count;                                                             \
         u32 size;                                                              \
     } BN_slice##T
@@ -400,9 +400,9 @@ void bn_allocatorFreeAll(BN_Allocator* alloc);
 #define bnAllocPushArrayNZ(alloc, T, len)                                      \
     (T*)bn_allocatorPush((BN_AllocatorParams){sizeof(T) * (len), true}, (alloc))
 
-#define bn_dArrayPrototype(T)                                                  \
+#define bn_dArrayPrototype(T)                                               \
     typedef struct {                                                           \
-        T* items;                                                              \
+        T* items;                                                           \
         u32 count;                                                             \
         u32 capacity;                                                          \
         BN_Allocator* allocator;                                               \
@@ -556,7 +556,6 @@ typedef struct {
     }
 
 // only used to initialize the context on the heap
-static thread_local BN_Allocator _bn_context_allocator = {0};
 static thread_local BN_Context* bn_context = {0};
 
 void bn_initContext(BN_ContextInitParams params);
@@ -1175,13 +1174,7 @@ void bn_hashTableAppend(BN_HashTable* table, String key, void* value) {
 }
 
 void bn_initContext(BN_ContextInitParams params) {
-    _bn_context_allocator = bn_initAllocator((BN_AllocatorInitParams){
-        .reserve_size = Byte * 8,
-        .commit_size = Byte * 8,
-        .type = BN_AllocatorType_ArenaStatic,
-    });
-
-    bn_context = bn_allocPushStruct(&_bn_context_allocator, BN_Context);
+    bn_context = malloc(sizeof(BN_Context));
 
     bn_context->log_opts = params.log_opts;
 
@@ -1211,7 +1204,7 @@ void bn_destroyContext() {
 
     bn_logDebugf("BN: destroying context");
 
-    bn_destroyAllocator(&_bn_context_allocator);
+    free(bn_context);
 }
 
 #endif
