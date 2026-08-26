@@ -1000,10 +1000,19 @@ void* bn_allocatorPush(BN_AllocatorParams params, BN_Allocator* alloc) {
 
     switch (alloc->type) {
     case BN_AllocatorType_ArenaStatic:
-    case BN_AllocatorType_ArenaGrowing:
+    case BN_AllocatorType_ArenaGrowing: {
+        // checks reallocation outside the arena push to update the pointer
+        BN_Arena* arena = alloc->data;
+        u64 pos_aligned = bn_alignPow2(arena->pos, BN_ARENA_ALIGN);
+        u64 new_pos = pos_aligned + params.size;
+        if (new_pos > arena->reserve_size) {
+            arena = bn_arenaRealloc(arena, new_pos);
+        }
+        alloc->data = arena;
         return bn_arenaPush(
             (BN_Arena*)alloc->data, params.size, params.non_zero
         );
+    }
     case BN_AllocatorType_HeapAllocator:
         return bn_heapAllocatorPush(params.size, params.non_zero);
     case BN_AllocatorType_TempAllocator:
