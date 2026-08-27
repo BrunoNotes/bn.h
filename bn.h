@@ -358,7 +358,6 @@ void bn_allocatorFreeAll(BN_Allocator* alloc);
         T* items;                                                              \
         u32 length;                                                            \
         u32 capacity;                                                          \
-        BN_Allocator* allocator;                                               \
     } BN_array##T
 
 bn_dArrayPrototype(i8);
@@ -386,10 +385,9 @@ bn_dArrayPrototype(Vec4f64);
 #define BN_DYNAMIC_ARRAY_INITIAL_CAPACITY 256
 #endif
 
-#define bn_daInit(alloc)                                                       \
-    {.items = NULL, .length = 0, .capacity = 0, .allocator = alloc}
+#define bn_daInit() {.items = NULL, .length = 0, .capacity = 0}
 
-#define bn_daReserve(da, expected_capacity)                                    \
+#define bn_daReserve(da, expected_capacity, allocator)                         \
     do {                                                                       \
         if ((expected_capacity) > (da)->capacity) {                            \
             if ((da)->capacity == 0) {                                         \
@@ -398,7 +396,7 @@ bn_dArrayPrototype(Vec4f64);
                     (BN_AllocatorParams){                                      \
                         (da)->capacity * sizeof(*(da)->items), false           \
                     },                                                         \
-                    (da)->allocator                                            \
+                    (allocator)                                                \
                 );                                                             \
             } else {                                                           \
                 u32 old_capacity = (da)->capacity;                             \
@@ -409,28 +407,28 @@ bn_dArrayPrototype(Vec4f64);
                     (BN_AllocatorParams){                                      \
                         (da)->capacity * sizeof(*(da)->items), false           \
                     },                                                         \
-                    (da)->allocator                                            \
+                    (allocator)                                                \
                 );                                                             \
                 memcpy(                                                        \
                     new_entries, (da)->items,                                  \
                     old_capacity * sizeof(*(da)->items)                        \
                 );                                                             \
-                bn_allocatorFree((da)->allocator, (da)->items);                \
+                bn_allocatorFree((allocator), (da)->items);                    \
                 (da)->items = new_entries;                                     \
             }                                                                  \
             bn_assert((da)->items != NULL);                                    \
         }                                                                      \
     } while (0)
 
-#define bn_daAppend(da, item)                                                  \
+#define bn_daAppend(da, item, allocator)                                       \
     do {                                                                       \
-        bn_daReserve((da), (da)->length + 1);                                  \
+        bn_daReserve((da), (da)->length + 1, (allocator));                     \
         (da)->items[(da)->length++] = (item);                                  \
     } while (0)
 
-#define bn_daAppendMany(da, new_items, new_items_count)                        \
+#define bn_daAppendMany(da, new_items, new_items_count, allocator)             \
     do {                                                                       \
-        bn_daerve((da), (da)->length + (new_items_count));                     \
+        bn_daerve((da), (da)->length + (new_items_count), (allocator));        \
         memcpy(                                                                \
             (da)->items + (da)->length, (new_items),                           \
             (new_items_count) * sizeof(*(da)->items)                           \
@@ -438,16 +436,16 @@ bn_dArrayPrototype(Vec4f64);
         (da)->length += (new_items_count);                                     \
     } while (0)
 
-#define bn_daFree(da)                                                          \
+#define bn_daFree(da, allocator)                                               \
     do {                                                                       \
-        bn_allocatorFree((da)->allocator, (da)->items);                        \
+        bn_allocatorFree((allocator), (da)->items);                            \
         (da)->length = 0;                                                      \
         (da)->capacity = 0;                                                    \
     } while (0)
 
-#define bn_daResize(da, new_size)                                              \
+#define bn_daResize(da, new_size, allocator)                                   \
     do {                                                                       \
-        bn_daReserve((da), new_size);                                          \
+        bn_daReserve((da), new_size, (allocator));                             \
         (da)->length = (new_size);                                             \
     } while (0)
 
@@ -464,20 +462,22 @@ typedef struct {
     BN_HashTableEntry* items;
     u32 length;
     u32 capacity;
-    BN_Allocator* allocator;
 } BN_HashTable;
 
-#define bn_htInit(alloc)                                                       \
-    {.items = NULL, .length = 0, .capacity = 0, .allocator = alloc}
+#define bn_htInit() {.items = NULL, .length = 0, .capacity = 0}
 
-void bn_hashTableReserve(BN_HashTable* table, u64 expected_capacity);
-void bn_hashTableFree(BN_HashTable* table);
+void bn_hashTableReserve(
+    BN_HashTable* table, u64 expected_capacity, BN_Allocator* allocator
+);
+void bn_hashTableFree(BN_HashTable* table, BN_Allocator* allocator);
 u32 bn_hashTableLinearProbe(BN_HashTable* table, String key);
 void* bn_hashTableGet(BN_HashTable* table, String key);
-void bn_hashTableAppend(BN_HashTable* table, String key, void* value);
+void bn_hashTableAppend(
+    BN_HashTable* table, String key, void* value, BN_Allocator* allocator
+);
 
-#define bn_htAppend(ht, key, value)                                            \
-    bn_hashTableAppend(ht, stringLit(key), (void*)value)
+#define bn_htAppend(ht, key, value, allocator)                                 \
+    bn_hashTableAppend(ht, stringLit(key), (void*)value, (allocator))
 
 #define bn_htGet(ht, key) bn_hashTableGet(ht, stringLit(key))
 
@@ -1070,7 +1070,9 @@ static inline u32 bn_fvn32aHash(u8* data, u32 length) {
     return h;
 }
 
-void bn_hashTableReserve(BN_HashTable* table, u64 expected_capacity) {
+void bn_hashTableReserve(
+    BN_HashTable* table, u64 expected_capacity, BN_Allocator* allocator
+) {
     if (expected_capacity > table->capacity) {
         if (table->capacity == 0) {
             table->capacity = BN_HASH_TABLE_INITIAL_CAPACITY;
@@ -1078,7 +1080,7 @@ void bn_hashTableReserve(BN_HashTable* table, u64 expected_capacity) {
                 (BN_AllocatorParams){
                     table->capacity * sizeof(*table->items), false
                 },
-                table->allocator
+                allocator
             );
         } else {
             while (expected_capacity > table->capacity) {
@@ -1089,7 +1091,7 @@ void bn_hashTableReserve(BN_HashTable* table, u64 expected_capacity) {
                     (BN_AllocatorParams){
                         table->capacity * sizeof(*table->items), false
                     },
-                    table->allocator
+                    allocator
                 );
 
             for (u32 i = 0; i < table->capacity; i++) {
@@ -1098,15 +1100,15 @@ void bn_hashTableReserve(BN_HashTable* table, u64 expected_capacity) {
                 }
             }
 
-            bn_allocatorFree(table->allocator, table->items);
+            bn_allocatorFree(allocator, table->items);
             table->items = new_entries;
         }
         bn_assert(table->items != NULL);
     }
 }
 
-void bn_hashTableFree(BN_HashTable* table) {
-    bn_allocatorFree(table->allocator, table->items);
+void bn_hashTableFree(BN_HashTable* table, BN_Allocator* allocator) {
+    bn_allocatorFree(allocator, table->items);
     table->length = 0;
     table->capacity = 0;
 }
@@ -1136,10 +1138,12 @@ void* bn_hashTableGet(BN_HashTable* table, String key) {
     return table->items[idx].value;
 }
 
-void bn_hashTableAppend(BN_HashTable* table, String key, void* value) {
+void bn_hashTableAppend(
+    BN_HashTable* table, String key, void* value, BN_Allocator* allocator
+) {
     bn_assert(value != NULL);
 
-    bn_hashTableReserve(table, table->length + 1);
+    bn_hashTableReserve(table, table->length + 1, allocator);
 
     u32 idx = bn_hashTableLinearProbe(table, key);
 
