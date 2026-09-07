@@ -192,6 +192,8 @@ typedef struct {
 
 #define bn_alignPow2(x, b) (((x) + (b) - 1) & (~((b) - 1)))
 
+#define bn_defer(begin, end) for(i8 _bn_defer_latch = (begin, 0); _bn_defer_latch < 1; _bn_defer_latch = 1, end)
+
 typedef enum {
     BN_LogLevel_Debug = 0,
     BN_LogLevel_Info = 1,

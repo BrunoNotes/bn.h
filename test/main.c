@@ -26,6 +26,10 @@ int main(int argc, char* argv[]) {
 
     bn_hashTableFree(&test_hash_table, &bn_context->allocator);
 
+    bn_defer(bn_logInfo("Test defer begin"), bn_logInfo("Test defer end")) {
+        bn_logInfo("Test defer middle");
+    }
+
     bn_destroyContext();
     return 0;
 }
