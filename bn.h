@@ -430,7 +430,7 @@ bn_dArrayPrototype(Vec4f64);
 
 #define bn_daAppendMany(da, new_items, new_items_count, allocator)             \
     do {                                                                       \
-        bn_daerve((da), (da)->length + (new_items_count), (allocator));        \
+        bn_daReserve((da), (da)->length + (new_items_count), (allocator));        \
         memcpy(                                                                \
             (da)->items + (da)->length, (new_items),                           \
             (new_items_count) * sizeof(*(da)->items)                           \
